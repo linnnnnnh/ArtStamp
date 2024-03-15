@@ -1,0 +1,12 @@
+body {
+    min-width: 300px;
+}
+
+.center {
+    text-align: center;
+}
+
+ul {
+    list-style: none;
+    text-align: left;
+}
