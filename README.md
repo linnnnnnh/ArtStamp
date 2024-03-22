@@ -2,8 +2,6 @@
   <br>
   <img src="artstamp B.svg" alt="ArtStamp" width="200"></a>
   <br>
-  ArtStamp
-  <br>
   Timestamp your prompt conversation,
 value the creative process in your AI art.
   <br>
