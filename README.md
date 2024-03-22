@@ -45,3 +45,6 @@ npm run dev
 7. Click on the button Save and timestamp
 8. Follow the instructions
 
+## Note
+
+The Frontend folder is a fork from another repo belonging to the owner of this project.
