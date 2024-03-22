@@ -1,20 +1,29 @@
 const express = require('express');
 const app = express();
 const port = 3000;
-const { PDFDocument, StandardFonts, rgb, degrees } = require('pdf-lib');
+const { PDFDocument, StandardFonts, rgb, degrees, fontkit } = require('pdf-lib');
 const fs = require('fs').promises;
 const fs2 = require('fs');
 const crypto = require('crypto');
 const sharp = require('sharp');
 const mintToken = require('./mintToken');
 const moment = require('moment');
-const archiver = require('archiver'); // to zip pdf
+const archiver = require('archiver');
+const fetch = require('node-fetch');
+const path = require('path');
+const cors = require('cors');
+const axios = require('axios');
+const FormData = require('form-data');
+require('dotenv').config();
 
-// Express server
+
+
 app.use(express.json());
+app.use(cors());
 
 async function createPdfFromContent(payload) {
     const pdfDoc = await PDFDocument.create();
+    console.log("pdf creating");
 
     for (const item of payload) {
         if (item.type === 'text') {
@@ -22,31 +31,38 @@ async function createPdfFromContent(payload) {
 
             // Add text to PDF
             const page = pdfDoc.addPage();
-            page.drawText(item.text);
+            console.log("page added for text");
+
+            page.drawText(item.text,
+                {
+                    x: 50, //shorter side
+                    y: 800, //longer side
+                    size: 12
+                });
         } else if (item.type === 'image') {
-            console.log(`Adding image from URL: ${item.url}`);
+            // console.log(`Adding image from URL: ${item.url}`);
 
             // Fetch the image from the URL
             const response = await fetch(item.url);
-            if (response.ok) {
-                console.log(`Fetched image successfully: ${item.url}`);
-            } else {
-                console.log(`Failed to fetch image: ${item.url}`);
-            }
+            // if (response.ok) {
+            //     console.log(`Fetched image successfully: ${item.url}`);
+            // } else {
+            //     console.log(`Failed to fetch image: ${item.url}`);
+            // }
 
-            console.log(`Fetch response status for ${item.url}: ${response.status}`);
+            // console.log(`Fetch response status for ${item.url}: ${response.status}`);
 
             const imageBytes = await response.arrayBuffer();
-            console.log(`Fetched image byte length: ${imageBytes.byteLength}`); //ok so far
-            console.log(imageBytes); // ok 
+            // console.log(`Fetched image byte length: ${imageBytes.byteLength}`); //ok so far
+            // console.log(imageBytes); // ok
 
             // Convert WebP to PNG using sharp
             let pngBuffer;
             try {
                 pngBuffer = await sharp(Buffer.from(imageBytes)).png().toBuffer();
-                console.log(`Image converted to PNG successfully.`);
+                // console.log(`Image converted to PNG successfully.`);
             } catch (error) {
-                console.error(`Failed to convert image: ${error}`);
+                // console.error(`Failed to convert image: ${error}`);
                 continue;
             }
 
@@ -58,18 +74,18 @@ async function createPdfFromContent(payload) {
             console.log('added page successfully');
 
             page.drawImage(image, {
-                x: page.getWidth() / 2 - image.width / 2,
-                y: page.getHeight() / 2 - image.height / 2,
-                width: image.width,
-                height: image.height,
+                x: (page.getWidth() - (image.width / 2)) / 2,
+                y: (page.getHeight() - (image.height / 2)) / 2,
+                width: image.width / 2,
+                height: image.height / 2,
             });
-            console.log(`Drew image on page: ${item.url}, Dimensions: ${image.width}x${image.height}, Position: center`);
+            // console.log(`Drew image on page: ${item.url}, Dimensions: ${image.width}x${image.height}, Position: center`);
         }
     }
 
     // Serialize the PDF to bytes (a Uint8Array)
     const pdfBytes = await pdfDoc.save();
-    console.log(`PDF saved, byte length: ${pdfBytes.byteLength}`); // OK
+    // console.log(`PDF saved, byte length: ${pdfBytes.byteLength}`); // OK
 
     // Define a path for the PDF file
     const filePath = './storage/creative-process.pdf';
@@ -81,9 +97,11 @@ async function createPdfFromContent(payload) {
     return filePath;
 }
 
+
 async function createCertificate(txD, txH, uri) {
     const pdfDoc = await PDFDocument.create();
-    let date = moment(txD).format('llll');
+    let epoch = txD + 946684800;
+    let date = moment(epoch * 1000).format('llll');
     const page = pdfDoc.addPage();
     page.drawText(`Certificate of timestamp \n` +
         `Your artwork and your creative process have been recorded; \n` +
@@ -163,6 +181,36 @@ async function zipFiles(files, outputPath) {
     });
 }
 
+// wrap text for the pdf
+// async function wrapText(font, text, maxWidth, fontSize) {
+//     const words = text.split(' ');
+//     console.log('words: ' + words);
+//     const lines = [];
+//     let line = '';
+
+//     words.forEach(word => {
+//         console.log('word: ' + word);
+//         const testLine = line + word + ' ';
+//         console.log('testLine:' + testLine)
+//         const testWidth = font.widthOfTextAtSize(text, fontSize);
+//         console.log('testWidth: ' + testWidth);
+
+//         if (testWidth > maxWidth && line !== '') {
+//             lines.push(line);
+//             line = word + ' ';
+//         } else {
+//             line = testLine;
+//         }
+
+//     });
+
+//     lines.push(line.trim()); // Push the last line
+//     return lines;
+// }
+
+
+// endpoint to handle the scraped content, create the PDF, mint the NFT and send back the PDFs to the extension
+
 app.post('/create-pdf', async (req, res) => {
     const { conversationContent: payload } = req.body;
     console.log('Starting PDF creation...');
@@ -177,7 +225,7 @@ app.post('/create-pdf', async (req, res) => {
 
         //mint the NFT 
         const { txDate, txHash, txURI } = await mintToken(hash);
-        console.log('NFT minted successfully.');
+        console.log('NFT certificate minted successfully.');
 
         // create the certificate of timestamp:
         const certPath = await createCertificate(txDate, txHash, txURI);
@@ -212,6 +260,111 @@ app.post('/create-pdf', async (req, res) => {
         res.status(500).json({ message: 'Error processing your request', error: error.message });
     }
 });
+
+// endpoint to receive the selected image and send it to the frontend registry
+// let lastUploadedImageUrl = null;
+// app.post('/upload-image', async (req, res) => {
+//     const { imageUrl } = req.body;
+
+//     try {
+//         const response = await fetch(imageUrl);
+//         console.log('image: ' + response);
+//         if (!response.ok) throw new Error(`Failed to fetch image: ${image.statusText}`);
+
+//         // if image fetched successfully, stream it to Pinata
+//         const formData = new FormData();
+//         console.log('formdata :' + formData);
+//         // Append the image stream directly
+//         formData.append('file', response.body);
+//         console.log('append: ' + response.body);
+
+//         const pinataMetadata = JSON.stringify({
+//             name: "File name",
+//         });
+//         formData.append("pinataMetadata", pinataMetadata);
+
+//         const pinataOptions = JSON.stringify({
+//             cidVersion: 1,
+//         });
+//         formData.append("pinataOptions", pinataOptions);
+
+//         const res = await axios.post(
+//             "https://api.pinata.cloud/pinning/pinFileToIPFS",
+//             formData,
+//             {
+//                 headers: {
+//                     Authorization: `Bearer ${process.env.PINATA_JWT}`,
+//                 },
+//             }
+//         );
+//         console.log('res.data: ' + res.data);
+
+//         // Assuming Pinata returns the CID in the response
+//         const imageCID = res.data.IpfsHash;
+//         console.log(imageCID);
+
+//         const pinataUrl = `https://harlequin-cheerful-blackbird-917.mypinata.cloud.mypinata.cloud/ipfs/${imageCID}`;
+//         lastUploadedImageUrl = pinataUrl;
+
+//         //mint the NFT 
+//         const { txDate, txHash, txURI } = await mintToken(imageCID);
+//         console.log('NFT artwork minted successfully.');
+
+//         res.status(200).json({ message: 'Image uploaded and CID obtained successfully', cid: imageCID });
+
+//     } catch (error) {
+//         console.log('Error uploading image:', error);
+//         res.status(500).json({ message: 'Error uploading image', error: error.toString() });
+//     }
+// });
+
+// let lastUploadedImagePath = null;
+let uploadedImagePaths = [];
+
+app.post('/upload-image', async (req, res) => {
+    const { imageUrl } = req.body;
+
+    try {
+        const response = await fetch(imageUrl);
+        if (!response.ok) throw new Error(`Failed to fetch image: ${response.statusText}`);
+
+        const imagePath = path.join(__dirname, 'final-artworks', Date.now() + '-' + path.basename(new URL(imageUrl).pathname));
+        // lastUploadedImagePath = imagePath;
+        uploadedImagePaths.push(imagePath);
+
+        fs2.mkdirSync(path.dirname(imagePath), { recursive: true });
+
+        const dest = fs2.createWriteStream(imagePath);
+        response.body.pipe(dest);
+
+        dest.on('finish', () => {
+            console.log('Image stored:', imagePath);
+            res.status(200).json({ message: 'Image stored successfully', imagePath });
+        });
+
+        dest.on('error', (error) => {
+            console.log('Error storing image:', error);
+            res.status(500).json({ message: 'Error storing image', error: error.toString() });
+        });
+    } catch (error) {
+        console.log('Error fetching image:', error);
+        res.status(500).json({ message: 'Error fetching image', error: error.toString() });
+    }
+});
+
+app.use('/final-artworks', express.static(path.join(__dirname, 'final-artworks')));
+
+
+app.get('/api/latest-image', (req, res) => {
+    if (uploadedImagePaths.length === 0) {
+        return res.status(404).json({ error: 'No image has been uploaded yet.' });
+    }
+    const imageUrls = uploadedImagePaths.map(imagePath =>
+        `${req.protocol}://${req.get('host')}/final-artworks/${path.basename(imagePath)}`);
+    res.json({ urls: imageUrls });
+    // console.log(imageUrl);
+});
+
 
 // Start the server
 app.listen(port, () => {

@@ -1,7 +1,6 @@
 const xrpl = require("xrpl");
 require('dotenv').config();
 
-
 async function mintToken(h) {
     const client = new xrpl.Client("wss://s.altnet.rippletest.net:51233");
     await client.connect();
