@@ -46,6 +46,9 @@ npm run dev
 7. Click on the button Save and timestamp
 8. Follow the instructions
 
+NFT hash checking: https://testnet.xrpl.org/
+SHA256 checksum online tool: https://emn178.github.io/online-tools/sha256_checksum.html
+
 ## Note
 
 The Frontend folder is a fork from another repo belonging to the owner of this project.
