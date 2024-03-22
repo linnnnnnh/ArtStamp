@@ -4,9 +4,12 @@
   <br>
   ArtStamp
   <br>
+  Timestamp your prompt conversation,
+value the creative process in your AI art.
+  <br>
 </h1>
 
-ArtStamp - a browser extension tool that records the creative process of an AI artist and generates a time stamping certificate on chain of their work.
+ArtStamp - a browser extension tool that records the creative process of an AI artist and generates a time stamping certificate on chain of their work. 
 
 ## Installation
 
